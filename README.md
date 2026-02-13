@@ -93,15 +93,86 @@ The calibration script will report quality metrics:
 python run.py
 ```
 
+## Testing
+
+This project includes comprehensive unit tests for all modules.
+
+### Running Tests
+
+Install test dependencies:
+
+```bash
+pip install -r requirements-test.txt
+```
+
+Run all tests:
+
+```bash
+pytest
+```
+
+Run tests with coverage report:
+
+```bash
+pytest --cov=src --cov-report=html
+```
+
+Or use the provided test runner:
+
+```bash
+python run_tests.py -v -c
+```
+
+See [tests/README.md](tests/README.md) for detailed testing documentation.
+
+### Test Coverage
+
+The test suite includes:
+
+- Configuration validation tests
+- Quaternion and rotation matrix tests
+- Magnetometer calibration tests (with synthetic data)
+- BLE streaming tests (with mocked connections)
+- Visualization tests
+
+Target coverage: **>80%** for all modules.
+
 ## Project Structure
 
 ```
 IMU-stream-processing-python/
 ├── README.md
 ├── requirements.txt
+├── requirements-test.txt
+├── pyproject.toml
 ├── run.py
-└── src/
-    ├── sensors/
-    ├── processing/
-    └── visualization/
+├── calibrate.py
+├── run_tests.py
+├── mag_calibration.json
+├── docs/
+│   ├── calibration_improvements.md
+│   ├── critic_implementation.md
+│   ├── critic.md
+│   ├── realtime_visualization.md
+│   ├── regularization_summary.md
+│   └── regularization.md
+├── src/
+│   ├── __init__.py
+│   ├── ble_stream.py
+│   ├── config.py
+│   ├── mag_calibration.py
+│   ├── utils.py
+│   └── visualizations/
+│       ├── __init__.py
+│       ├── orientation_plot.py
+│       └── stream_plot.py
+└── tests/
+    ├── __init__.py
+    ├── conftest.py
+    ├── README.md
+    ├── test_config.py
+    ├── test_utils.py
+    ├── test_mag_calibration.py
+    ├── test_ble_stream.py
+    └── test_visualizations.py
 ```

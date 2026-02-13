@@ -100,7 +100,7 @@ class IMUStreamer:
             
             # Extract raw sensor data (from byte 2 to byte packet_length)
             if len(data) == self.expected_packet_len:
-                raw_data = data[2:data[1]-2] ## First two bytes are reserved for length and packet type
+                raw_data = data[2:2+self.raw_data_len] ## MOD: First two bytes are reserved for length and packet type
                 if len(raw_data) == self.raw_data_len:
                     current_byte = 0
                     for imu_index in range(3): ## We are unpacking 3 imus
