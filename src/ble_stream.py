@@ -7,7 +7,9 @@ from datetime import datetime
 import struct
 from collections import deque
 from copy import copy
+import os
 from .config import *
+from .mag_calibration import MagnetometerCalibration
 
 
 class IMUStreamer:
@@ -44,6 +46,49 @@ class IMUStreamer:
         self.madgwick_filter = Madgwick(sample_freq)
         self.Q = np.array([1., 0., 0., 0.])
         self.start_time = None
+        
+        # Magnetometer calibration
+        self.mag_calibration = MagnetometerCalibration()
+        self._load_calibration_if_available()
+    
+    def _load_calibration_if_available(self):
+        """Try to load magnetometer calibration from file if it exists."""
+        calibration_file = 'mag_calibration.json'
+        if os.path.exists(calibration_file):
+            try:
+                self.mag_calibration.load_calibration(calibration_file)
+                print("✓ Magnetometer calibration loaded successfully")
+            except Exception as e:
+                print(f"⚠ WARNING: Could not load calibration file: {e}")
+                print("⚠ Using uncalibrated magnetometer values")
+                print("⚠ Run 'python calibrate.py' to calibrate for accurate orientation")
+        else:
+            print("\n" + "="*70)
+            print("⚠ WARNING: No magnetometer calibration found!")
+            print("="*70)
+            print("Magnetometer data will be used UNCALIBRATED.")
+            print("This will likely result in:")
+            print("  - Inaccurate heading estimates")
+            print("  - Unreliable orientation data")
+            print("  - Drift and errors in sensor fusion")
+            print("\nTo calibrate:")
+            print("  1. Stop this program")
+            print("  2. Run: python calibrate.py")
+            print("  3. Follow calibration instructions")
+            print("  4. Restart this program")
+            print("="*70 + "\n")
+            
+            # Ask user if they want to continue
+            try:
+                response = input("Continue with uncalibrated data? (yes/no) [no]: ").strip().lower()
+                if response not in ['yes', 'y']:
+                    print("Exiting. Please run calibration first.")
+                    import sys
+                    sys.exit(1)
+            except (EOFError, KeyboardInterrupt):
+                print("\nExiting. Please run calibration first.")
+                import sys
+                sys.exit(1)
     
     def notification_handler(self, sender, data):
         """Callback function that handles incoming data from the characteristic"""
@@ -60,7 +105,7 @@ class IMUStreamer:
                     current_byte = 0
                     for imu_index in range(3): ## We are unpacking 3 imus
                         values = struct.unpack('<hhhhhhhhh', raw_data[current_byte:current_byte+18])
-                        current_byte += 18
+                        current_byte += 20 # MOD: 4*6 = 20 bytes
 
                         if imu_index == 0: ## TODO: we are just working with imu 0 for now
                             # Unpack into accel, gyro, mag
@@ -79,12 +124,19 @@ class IMUStreamer:
                             mag_x_nt = mag_x * MAG_SENSITIVITY ## in nT
                             mag_y_nt = mag_y * MAG_SENSITIVITY
                             mag_z_nt = mag_z * MAG_SENSITIVITY
+                            
+                            # Apply magnetometer calibration if available
+                            mag_raw = np.array([mag_x_nt, mag_y_nt, mag_z_nt])
+                            mag_calibrated = self.mag_calibration.apply_calibration(mag_raw)
+                            
+                            print(f"Raw: {mag_x_nt:.1f} {mag_y_nt:.1f} {mag_z_nt:.1f} | "
+                                  f"Cal: {mag_calibrated[0]:.1f} {mag_calibrated[1]:.1f} {mag_calibrated[2]:.1f}")
 
                             q = self.madgwick_filter.updateMARG(
                                 q = self.Q,
                                 gyr=np.array([gyro_x_rad, gyro_y_rad, gyro_z_rad]),
                                 acc=np.array([accel_x_g, accel_y_g, accel_z_g]),
-                                mag = np.array([mag_x_nt, mag_y_nt, mag_z_nt])
+                                mag = mag_calibrated
                             ) 
 
                             # Add quaternion data
