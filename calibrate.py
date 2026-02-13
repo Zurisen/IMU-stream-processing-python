@@ -224,8 +224,8 @@ class CalibrationCollector:
         - Only the 3D plot display is downsampled for performance
         
         Visualization features:
-        - Inliers (points fitting the sphere) plotted with color gradient (time-based)
-        - Outliers (deviations > 20% from sphere radius) plotted in transparent gray
+        - Inliers (points within 2.5σ of mean radius) plotted with color gradient (time-based)
+        - Outliers (deviations >2.5σ from mean radius) plotted in transparent gray
         - Provides immediate visual feedback on data quality and disturbances
         
         Performance optimizations:
@@ -254,14 +254,19 @@ class CalibrationCollector:
             mean_radius = np.mean(radii)
             std_radius = np.std(radii)
             
-            # Classify points as inliers or outliers
-            # Outliers are points deviating > 20% from mean radius
-            outlier_threshold = mean_radius * 0.20
+            # Classify points as inliers or outliers using statistical threshold
+            # Outliers are points beyond mean ± 2.5 standard deviations
+            # This is a more robust statistical approach than using % of mean
+            outlier_threshold = 2.5 * std_radius
             is_inlier = np.abs(radii - mean_radius) <= outlier_threshold
             is_outlier = ~is_inlier
             
             inlier_data = data[is_inlier]
             outlier_data = data[is_outlier]
+            
+            if self.debug_plotting and len(data) % 50 == 0:  # Print every 50 samples
+                print(f"[DEBUG] Radius stats: mean={mean_radius:.1f} nT, std={std_radius:.1f} nT, "
+                      f"threshold={outlier_threshold:.1f} nT")
             
             # Downsample both inliers and outliers for plotting
             def downsample_points(points, max_points):
@@ -283,9 +288,6 @@ class CalibrationCollector:
             plot_inliers, inlier_colors = downsample_points(inlier_data, self.max_plot_points)
             
             # Downsample outliers (plot fewer - just to show disturbances)
-            max_outliers = min(100, self.max_plot_points // 5)  # Max 100 outliers shown
-            plot_outliers, _ = downsample_points(outlier_data, max_outliers)
-            
             max_outliers = min(100, self.max_plot_points // 5)  # Max 100 outliers shown
             plot_outliers, _ = downsample_points(outlier_data, max_outliers)
             
