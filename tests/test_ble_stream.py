@@ -5,8 +5,9 @@ Tests IMU data streaming and processing with mocked BLE connections.
 import pytest
 import numpy as np
 import struct
+import json
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock, mock_open
 from collections import deque
 import asyncio
 
@@ -70,6 +71,36 @@ class TestIMUStreamerInit:
         assert streamer.madgwick_filter is not None
         # Initial quaternion should be [1, 0, 0, 0]
         np.testing.assert_array_equal(streamer.Q, np.array([1., 0., 0., 0.]))
+
+    @patch('builtins.input', return_value='yes')
+    @patch('builtins.print')
+    def test_ekf_noises_loaded_from_json(self, mock_print, mock_input):
+        """Test EKF noises are loaded from ekf_noise.json when present."""
+        mock_payload = json.dumps({'noises': [1e-4, 2e-3, 3e-2]})
+
+        def exists_side_effect(path):
+            return path == EKF_NOISE_FILE
+
+        with patch('os.path.exists', side_effect=exists_side_effect):
+            with patch('builtins.open', mock_open(read_data=mock_payload)):
+                streamer = IMUStreamer(
+                    DEVICE_ADDRESS, CHARACTERISTIC_UUID,
+                    SAMPLE_FREC, PACKET_LENGTH, RAW_DATA_LENGTH
+                )
+
+        assert streamer.ekf_noises == [1e-4, 2e-3, 3e-2]
+
+    @patch('os.path.exists', return_value=False)
+    @patch('builtins.input', return_value='yes')
+    @patch('builtins.print')
+    def test_ekf_noises_default_when_json_missing(self, mock_print, mock_input, mock_exists):
+        """Test EKF default noises are used when ekf_noise.json is absent."""
+        streamer = IMUStreamer(
+            DEVICE_ADDRESS, CHARACTERISTIC_UUID,
+            SAMPLE_FREC, PACKET_LENGTH, RAW_DATA_LENGTH
+        )
+
+        assert streamer.ekf_noises == EKF_DEFAULT_NOISES
     
     @patch('os.path.exists')
     @patch('builtins.print')

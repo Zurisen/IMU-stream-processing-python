@@ -3,6 +3,7 @@ from bleak import BleakClient
 from ahrs.filters import EKF, Madgwick
 import numpy as np
 import pandas as pd
+import json
 from datetime import datetime
 import struct
 from collections import deque
@@ -45,11 +46,7 @@ class IMUStreamer:
         
         # Processing
         self.fusion_filter_name = str(FUSION_FILTER).strip().lower()
-        self.orientation_filter = self._build_orientation_filter(sample_freq)
-        # Backward-compatible attribute for existing code/tests.
-        self.madgwick_filter = self.orientation_filter if self.fusion_filter_name == 'madgwick' else None
-        self.Q = np.array([1., 0., 0., 0.])
-        self.start_time = None
+        self.ekf_noises = list(EKF_DEFAULT_NOISES)
 
         # Phase 1 instrumentation state
         self.last_sample_timestamp = None
@@ -63,13 +60,27 @@ class IMUStreamer:
         # Magnetometer calibration
         self.mag_calibration = MagnetometerCalibration()
         self._load_calibration_if_available()
+        self._load_ekf_noises_if_available()
+
+        self.orientation_filter = self._build_orientation_filter(sample_freq)
+        # Backward-compatible attribute for existing code/tests.
+        self.madgwick_filter = self.orientation_filter
+        self.Q = np.array([1., 0., 0., 0.])
+        self.start_time = None
 
     def _build_orientation_filter(self, sample_freq):
         """Build the configured orientation filter implementation."""
         if self.fusion_filter_name == 'madgwick':
             return Madgwick(frequency=sample_freq)
         if self.fusion_filter_name == 'ekf':
-            return EKF(frequency=sample_freq)
+            # ahrs.EKF requires a magnetic reference at construction time when
+            # update() is called with mag measurements, otherwise it falls back
+            # to a 3D measurement model and raises a shape mismatch.
+            return EKF(
+                frequency=sample_freq,
+                mag=np.array([1.0, 0.0, 0.0]),
+                noises=self.ekf_noises,
+            )
 
         raise ValueError(
             f"Unsupported FUSION_FILTER '{FUSION_FILTER}'. Use 'madgwick' or 'ekf'."
@@ -113,6 +124,45 @@ class IMUStreamer:
                 print("\nExiting. Please run calibration first.")
                 import sys
                 sys.exit(1)
+
+    def _load_ekf_noises_if_available(self):
+        """Try to load EKF noise variances from JSON file if it exists."""
+        if self.fusion_filter_name != 'ekf':
+            return
+
+        if not os.path.exists(EKF_NOISE_FILE):
+            print(
+                f"ℹ EKF noise file '{EKF_NOISE_FILE}' not found; "
+                f"using defaults {self.ekf_noises}"
+            )
+            return
+
+        try:
+            with open(EKF_NOISE_FILE, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+
+            noises = payload.get('noises')
+            if noises is None:
+                var_gyr = payload.get('var_gyr')
+                var_acc = payload.get('var_acc')
+                var_mag = payload.get('var_mag')
+                noises = [var_gyr, var_acc, var_mag]
+
+            if not isinstance(noises, (list, tuple)) or len(noises) != 3:
+                raise ValueError("Expected 'noises' to be a list of 3 numeric variances")
+
+            parsed = [float(v) for v in noises]
+            if any((not np.isfinite(v)) or v <= 0.0 for v in parsed):
+                raise ValueError("EKF noise variances must be finite and > 0")
+
+            self.ekf_noises = parsed
+            print(
+                f"✓ EKF noises loaded from {EKF_NOISE_FILE}: "
+                f"var_gyr={parsed[0]:.6e}, var_acc={parsed[1]:.6e}, var_mag={parsed[2]:.6e}"
+            )
+        except Exception as e:
+            print(f"⚠ WARNING: Could not load EKF noises from {EKF_NOISE_FILE}: {e}")
+            print(f"⚠ Using default EKF noises: {self.ekf_noises}")
     
     def notification_handler(self, sender, data):
         """Callback function that handles incoming data from the characteristic"""

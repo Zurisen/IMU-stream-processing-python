@@ -93,6 +93,25 @@ The calibration script will report quality metrics:
 python run.py
 ```
 
+## EKF Noise Calibration (Q/R)
+
+If you are using `FUSION_FILTER = "ekf"`, you can estimate EKF noise variances from a static capture and save them to JSON.
+
+```bash
+python calibrate_ekf_noise.py --duration 30
+```
+
+This generates `ekf_noise.json`, which is automatically loaded by the streamer at startup (similar to `mag_calibration.json`).
+
+The file contains:
+
+- `var_gyr`: gyroscope variance estimate (used in process noise/Q)
+- `var_acc`: accelerometer variance estimate (used in measurement noise/R)
+- `var_mag`: magnetometer variance estimate (used in measurement noise/R)
+- `noises`: `[var_gyr, var_acc, var_mag]` ready for `ahrs.filters.EKF`
+
+Re-run the calibration whenever sensor mounting, environment, or firmware settings change.
+
 ## Testing
 
 This project includes comprehensive unit tests for all modules.

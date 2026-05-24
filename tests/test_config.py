@@ -101,6 +101,19 @@ class TestConfigConstants:
         assert isinstance(MAX_POINTS, int)
         assert MAX_POINTS > 0
         assert MAX_POINTS == 100
+
+    def test_ekf_noise_defaults_shape_and_values(self):
+        """Test EKF default noise vector has expected structure."""
+        assert isinstance(EKF_DEFAULT_NOISES, list)
+        assert len(EKF_DEFAULT_NOISES) == 3
+        for value in EKF_DEFAULT_NOISES:
+            assert isinstance(value, (int, float))
+            assert value > 0
+
+    def test_ekf_noise_file_name(self):
+        """Test EKF noise calibration file path constant."""
+        assert isinstance(EKF_NOISE_FILE, str)
+        assert EKF_NOISE_FILE.endswith('.json')
     
     def test_conversion_values_realistic(self):
         """Test that sensitivity and conversion values are realistic."""
