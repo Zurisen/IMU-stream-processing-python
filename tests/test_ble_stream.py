@@ -464,6 +464,115 @@ class TestQuaternionUpdate:
         return packet
 
 
+class TestInstrumentation:
+    """Test Phase 1 instrumentation outputs."""
+
+    def create_valid_imu_packet(self, accel=(1000, 2000, 3000),
+                                gyro=(100, 200, 300),
+                                mag=(4000, 5000, 6000)):
+        packet_type = 0x01
+        packet_length = PACKET_LENGTH
+
+        imu_data = b''
+        for imu_idx in range(3):
+            if imu_idx == 0:
+                values = accel + gyro + mag
+            else:
+                values = (0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+            imu_data += struct.pack('<hhhhhhhhh', *values)
+            imu_data += b'\x00\x00'
+
+        imu_data = imu_data[:RAW_DATA_LENGTH]
+        if len(imu_data) < RAW_DATA_LENGTH:
+            imu_data += b'\x00' * (RAW_DATA_LENGTH - len(imu_data))
+
+        packet = struct.pack('BB', packet_length, packet_type) + imu_data + b'\x00\x00'
+        return packet
+
+    @patch('os.path.exists', return_value=False)
+    @patch('builtins.input', return_value='yes')
+    @patch('builtins.print')
+    def test_per_sample_dt_and_mag_norm_logged(self, mock_print, mock_input, mock_exists):
+        streamer = IMUStreamer(
+            DEVICE_ADDRESS, CHARACTERISTIC_UUID,
+            SAMPLE_FREC, PACKET_LENGTH, RAW_DATA_LENGTH
+        )
+
+        packet = self.create_valid_imu_packet()
+        streamer.notification_handler(sender=None, data=packet)
+        streamer.notification_handler(sender=None, data=packet)
+
+        assert len(streamer.data_buffer) == 2
+        first = streamer.data_buffer[0]
+        second = streamer.data_buffer[1]
+
+        assert 'dt' in first
+        assert 'mag_norm_raw' in first
+        assert 'mag_norm_calibrated' in first
+        assert first['dt'] is None
+        assert second['dt'] is not None
+        assert second['dt'] >= 0.0
+        assert first['mag_norm_raw'] > 0.0
+        assert first['mag_norm_calibrated'] > 0.0
+
+    @patch('os.path.exists', return_value=False)
+    @patch('builtins.input', return_value='yes')
+    @patch('builtins.print')
+    def test_static_window_gyro_summary_generated(self, mock_print, mock_input, mock_exists):
+        streamer = IMUStreamer(
+            DEVICE_ADDRESS, CHARACTERISTIC_UUID,
+            SAMPLE_FREC, PACKET_LENGTH, RAW_DATA_LENGTH
+        )
+
+        # Approximate +1g on Z-axis raw value for LSM6DSV sensitivity.
+        static_packet = self.create_valid_imu_packet(
+            accel=(0, 0, 16384),
+            gyro=(0, 0, 0),
+            mag=(4000, 5000, 6000)
+        )
+        moving_packet = self.create_valid_imu_packet(
+            accel=(0, 0, 16384),
+            gyro=(2000, 0, 0),
+            mag=(4000, 5000, 6000)
+        )
+
+        for _ in range(55):
+            streamer.notification_handler(sender=None, data=static_packet)
+
+        # End static segment so it is finalized into a window summary.
+        streamer.notification_handler(sender=None, data=moving_packet)
+
+        static_df = streamer.get_static_windows_dataframe()
+        assert not static_df.empty
+
+        first_window = static_df.iloc[0]
+        assert first_window['sample_count'] >= streamer.static_window_min_samples
+        assert abs(first_window['gyro_mean_x']) < 1e-6
+        assert abs(first_window['gyro_mean_y']) < 1e-6
+        assert abs(first_window['gyro_mean_z']) < 1e-6
+
+    @patch('os.path.exists', return_value=False)
+    @patch('builtins.input', return_value='yes')
+    @patch('builtins.print')
+    def test_instrumentation_summary_contains_expected_sections(self, mock_print, mock_input, mock_exists):
+        streamer = IMUStreamer(
+            DEVICE_ADDRESS, CHARACTERISTIC_UUID,
+            SAMPLE_FREC, PACKET_LENGTH, RAW_DATA_LENGTH
+        )
+
+        packet = self.create_valid_imu_packet()
+        for _ in range(3):
+            streamer.notification_handler(sender=None, data=packet)
+
+        summary = streamer.get_instrumentation_summary()
+
+        assert summary['sample_count'] == 3
+        assert 'dt_stats' in summary
+        assert 'mag_norm_stats' in summary
+        assert 'static_windows' in summary
+
+
 @pytest.mark.asyncio
 class TestAsyncStreaming:
     """Test async BLE streaming (with mocks)."""

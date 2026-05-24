@@ -1,1 +1,9 @@
 venv*
+.coverage
+*.json
+__pycache__/
+*.pyc
+*.pyo
+*.csv
+*.log
+*.png
