@@ -7,7 +7,7 @@ from matplotlib.animation import FuncAnimation
 import threading
 
 def main():
-    duration = 30
+    duration = 60
     
     # Create streamer instance
     streamer = IMUStreamer(DEVICE_ADDRESS, CHARACTERISTIC_UUID, sample_freq=SAMPLE_FREC,
