@@ -9,7 +9,7 @@ GYRO_SENSITIVITY = 4.375/1000.0 ## Mod: sensitivity
 MAG_SENSITIVITY = 1.5 * 100 ## Mod: sensitivity
 DEG_TO_RAD = math.pi / 180.0
 GRAVITY = -9.80665
-SAMPLE_FREC = 20
+SAMPLE_FREC = 100 # Sample frequency in Hz
 MAX_POINTS = 100  # Number of points to display
 
 # Sensor fusion configuration

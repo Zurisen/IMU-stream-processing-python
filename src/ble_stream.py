@@ -204,27 +204,41 @@ class IMUStreamer:
                             mag_calibrated_ = self.mag_calibration.apply_calibration(mag_raw)
                             # Apply magnetometer displacement from acc
                             mag_calibrated = np.array([
-                                mag_calibrated_[0],  # Invert X to match expected orientation
-                                mag_calibrated_[1],  # Invert Y to match expected orientation
+                                mag_calibrated_[1],  # Match expected orientation
+                                - mag_calibrated_[0],  # Match expected orientation
                                 mag_calibrated_[2]    # Z is unchanged
                             ])
 
                             mag_norm_raw = float(np.linalg.norm(mag_raw))
                             mag_norm_cal = float(np.linalg.norm(mag_calibrated))
 
-                            dt = None
-                            if self.last_sample_timestamp is not None:
-                                dt = (timestamp - self.last_sample_timestamp).total_seconds()
-                            self.last_sample_timestamp = timestamp
+                            # dt = None
+                            # if self.last_sample_timestamp is not None:
+                            #     dt = (timestamp - self.last_sample_timestamp).total_seconds()
+                            # self.last_sample_timestamp = timestamp
 
-                            # Use measured packet timing when available to keep filter dynamics
-                            # consistent even if configured and actual sample rates differ.
-                            filter_dt = dt if dt is not None and dt > 0.0 else (1.0 / float(self.sample_freq))
+                            # # Use measured packet timing when available to keep filter dynamics
+                            # # consistent even if configured and actual sample rates differ.
+                            # filter_dt = dt if dt is not None and dt > 0.0 else (1.0 / float(self.sample_freq))
+
+                            # # --- DIAGNOSTIC PRINT: Add this block here ---
+                            # # This will print a rolling sequence of arrival intervals
+                            # if not hasattr(self, '_dt_counter'):
+                            #     self._dt_counter = 0
+                            # self._dt_counter += 1
+
+                            # if self._dt_counter < 50:  # Print the first 50 packets at startup
+                            #     print(f"Packet #{self._dt_counter:02d} Arrival Interval (dt): {dt:.4f} seconds")
+                            # elif self._dt_counter == 50:
+                            #     print("--- End of Timing Diagnostic ---")                            
+
+                            dt = 1.0 / float(self.sample_freq)  # Use configured sample frequency for filter update to ensure consistent dynamics
+                            filter_dt = 1.0 / float(self.sample_freq)
                             
                             # print(f"Raw: {mag_x_nt:.1f} {mag_y_nt:.1f} {mag_z_nt:.1f} | "
                             #       f"Cal: {mag_calibrated[0]:.1f} {mag_calibrated[1]:.1f} {mag_calibrated[2]:.1f}")
 
-                            gyr_vec = np.array([gyro_x_rad, gyro_y_rad, gyro_z_rad])
+                            gyr_vec = np.array([gyro_x_rad, -gyro_y_rad, -gyro_z_rad])
                             acc_vec = np.array([accel_x_g, accel_y_g, accel_z_g])
 
                             # mag_calibrated = np.zeros(3)
@@ -248,10 +262,11 @@ class IMUStreamer:
                                     dt=filter_dt,
                                 )
                             # --- 60-SECOND DIAGNOSTIC PRINT ---
-                            if len(self.data_buffer) % 20 == 0: # Print every 20 frames so it doesn't lag
-                                print(f"ACCEL: X={accel_x_g:+6.2f} | Y={accel_y_g:+6.2f} | Z={accel_z_g:+6.2f}  ||  "
-                                    f"GYRO: X={gyro_x_rad:+7.2f} | Y={gyro_y_rad:+6.2f} | Z={gyro_z_rad:+6.2f} || "
-                                    f"MAG: X={mag_x_nt:+6.2f} | Y={mag_y_nt:+6.2f} | Z={mag_z_nt:+6.2f}")
+                            # if len(self.data_buffer) % 100 == 0: # Print every 20 frames so it doesn't lag
+                            #     print(f"Sample rate ≈ {1.0/filter_dt:.1f} Hz | ")
+                            #     print(f"ACCEL: X={accel_x_g:+6.2f} | Y={accel_y_g:+6.2f} | Z={accel_z_g:+6.2f}  ||  "
+                            #         f"GYRO: X={gyro_x_rad:+7.2f} | Y={gyro_y_rad:+6.2f} | Z={gyro_z_rad:+6.2f} || "
+                            #         f"MAG: X={mag_x_nt:+6.2f} | Y={mag_y_nt:+6.2f} | Z={mag_z_nt:+6.2f}")
 
                             # Add quaternion data
                             self.quat_w_data.append(q[0])
